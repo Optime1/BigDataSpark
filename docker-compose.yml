@@ -1,0 +1,69 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: bigdataspark-postgres
+    environment:
+      POSTGRES_DB: bigdataspark
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+      - ./исходные данные:/data/source:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d bigdataspark"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: bigdataspark-clickhouse
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  spark:
+    image: apache/spark:3.5.6
+    container_name: bigdataspark-spark
+    user: root
+    command: ["sleep", "infinity"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    environment:
+      SPARK_MODE: client
+      POSTGRES_URL: jdbc:postgresql://postgres:5432/bigdataspark
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      CLICKHOUSE_URL: jdbc:clickhouse://clickhouse:8123/default
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+    volumes:
+      - ./jobs:/opt/spark/jobs:ro
+      - ./jars:/opt/spark/jars-extra:ro
+      - ./исходные данные:/data/source:ro
+
+volumes:
+  postgres_data:
+  clickhouse_data:
